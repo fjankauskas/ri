@@ -1,19 +1,18 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { requestPurchase } from "@/app/actions";
 import { n, money, priceLabel, total } from "@/lib/format";
 export type Offer = { partner_id: string; partner: string; product_id: string; product: string; unit: string; qty: number; price: number | null; price_per: number | null };
 const key = (o: Offer) => `${o.partner_id}|${o.product_id}`;
 const num = (x: string) => Number(x.replace(",", "."));
-const Total = ({ o, qty }: { o: Offer; qty: string }) => {
-  const t = total(num(qty), o.price, o.price_per);
-  return <p className="tot mu">Precio: {priceLabel(o.price, o.price_per, o.unit)}{t != null && <> · <b>Total: {money(t)}</b></>}</p>;
-};
-// Formulario completo (pantalla Pedidos): elige proveedor/producto y ve el total antes de enviar.
-export function PurchaseForm({ offers, back }: { offers: Offer[]; back: string }) {
-  const [sel, setSel] = useState(offers[0] ? key(offers[0]) : "");
+// Pedido de compra: elegís proveedor/producto y ves el total antes de enviar.
+export function PurchaseForm({ offers, back, initial, closeHref }: { offers: Offer[]; back: string; initial?: string; closeHref?: string }) {
+  const first = offers.find((x) => key(x) === initial) ?? offers[0];
+  const [sel, setSel] = useState(first ? key(first) : "");
   const [qty, setQty] = useState("");
-  const o = offers.find((x) => key(x) === sel) ?? offers[0];
+  const o = offers.find((x) => key(x) === sel) ?? first;
+  const t = o ? total(num(qty), o.price, o.price_per) : null;
   return (
     <form className="f" action={requestPurchase}>
       <input type="hidden" name="back" value={back} />
@@ -23,23 +22,12 @@ export function PurchaseForm({ offers, back }: { offers: Offer[]; back: string }
         </select>
       </label>
       <label>Cantidad{o ? ` (${o.unit})` : ""}<input name="qty" type="number" step="any" min="0" max={o?.qty} required value={qty} onChange={(e) => setQty(e.target.value)} /></label>
-      {o && <Total o={o} qty={qty} />}
+      {o && <p className="tot text-mute">Precio: {priceLabel(o.price, o.price_per, o.unit)}{t != null && <> · <b>Total: {money(t)}</b></>}</p>}
       <label>Nota (opcional)<input name="note" /></label>
-      <button className="p" disabled={!offers.length}>Enviar pedido de compra</button>
-    </form>
-  );
-}
-// Versión compacta (pantalla Red): una fila por producto publicado.
-export function BuyInline({ o, back }: { o: Offer; back: string }) {
-  const [qty, setQty] = useState("");
-  return (
-    <form action={requestPurchase} style={{ display: "grid", gap: 4 }}>
-      <input type="hidden" name="back" value={back} /><input type="hidden" name="offer" value={key(o)} />
-      <div style={{ display: "flex", gap: 6 }}>
-        <input name="qty" type="number" step="any" min="0" max={o.qty} placeholder={`Cant. (${o.unit})`} required style={{ width: 110 }} value={qty} onChange={(e) => setQty(e.target.value)} aria-label={`Cantidad de ${o.product} a pedir`} />
-        <button className="p">Pedir</button>
+      <div className="mt-2 flex gap-3 border-t border-line pt-5">
+        <button className="btn btn-green" disabled={!offers.length}>Enviar pedido de compra</button>
+        {closeHref && <Link href={closeHref} className="btn btn-gray no-underline">Cancelar</Link>}
       </div>
-      {total(num(qty), o.price, o.price_per) != null && <span className="tot">Total: <b>{money(total(num(qty), o.price, o.price_per))}</b></span>}
     </form>
   );
 }

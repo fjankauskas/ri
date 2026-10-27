@@ -17,7 +17,7 @@ export default function Scanner() {
           try {
             const raw = (await det.detect(v.current))[0]?.rawValue;
             const id = raw && new URL(raw, location.origin).searchParams.get("lot");
-            if (id) { location.href = `/trace?lot=${id}`; return; }
+            if (id) { location.href = `/inventory?v=trace&lot=${id}`; return; }
           } catch {}
           setTimeout(tick, 400);
         };
@@ -28,9 +28,9 @@ export default function Scanner() {
   }, []);
   return (
     <>
-      <p role="status">{msg}</p>
-      <video ref={v} playsInline muted style={{ width: "100%", maxWidth: 420, borderRadius: 8 }} />
-      <form action="/trace" className="f" style={{ marginTop: 12 }}><label>Código de lote<input name="lot" /></label><button className="p">Ver lote</button></form>
+      <p role="status" className="mb-3 text-sm text-mute">{msg}</p>
+      <video ref={v} playsInline muted className="w-full rounded-lg bg-black" />
+      <form action="/inventory" className="f" style={{ marginTop: 12 }}><input type="hidden" name="v" value="trace" /><label>Código de lote<input name="lot" required /></label><button className="btn btn-green">Ver lote</button></form>
     </>
   );
 }

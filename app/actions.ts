@@ -6,16 +6,22 @@ import { supabaseServer } from "@/lib/supabase/server";
 import * as inv from "@/services/inventory";
 import { parseStockCsv } from "@/lib/csv";
 import { UNITS, normUnit } from "@/lib/units";
+import { IVA_OPTIONS } from "@/lib/billing";
+import { validateGtin } from "@/lib/gs1/check";
+import { gtinTaken } from "@/lib/gs1/data";
 const site = () => process.env.NEXT_PUBLIC_SITE_URL ?? "";
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-// Ruta a la que vuelve la pantalla después de una acción (solo rutas propias permitidas).
-const back = (f: FormData, def: string) => (["/products", "/production", "/orders", "/network"].includes(s(f, "back")) ? s(f, "back") : def);
+// Destinos por defecto después de cada acción (cada submenú de Inventario y Red).
+const PATH = { products: "/inventory?v=products", production: "/inventory?v=production", orders: "/network?v=orders", partners: "/network?v=partners", market: "/network?v=market", shipments: "/network?v=shipments" };
+// Ruta a la que vuelve la pantalla después de una acción: solo rutas propias (/inventory o /network) con parámetros simples.
+const back = (f: FormData, def: string) => (/^\/(inventory|network)(\?[\w=&%.|\-]*)?$/.test(s(f, "back")) ? s(f, "back") : def);
 const num = (x: string) => Number(x.replace(",", "."));
+const ivaOf = (f: FormData) => { const v = s(f, "iva") || "21"; if (!IVA_OPTIONS.some((o) => o.key === v)) throw new Error("La alícuota de IVA no es válida"); return v; };
 async function run(path: string, fn: () => Promise<unknown>, ok: string | (() => string)) {
   let err = "";
   try { await fn(); } catch (e: any) { err = e?.issues?.[0]?.message ?? e?.message ?? "Error inesperado"; }
   revalidatePath("/", "layout");
-  redirect(`${path}?${err ? "e=" + encodeURIComponent(err) : "ok=" + encodeURIComponent(typeof ok === "function" ? ok() : ok)}`);
+  redirect(`${path}${path.includes("?") ? "&" : "?"}${err ? "e=" + encodeURIComponent(err) : "ok=" + encodeURIComponent(typeof ok === "function" ? ok() : ok)}`);
 }
 export async function signIn(f: FormData) {
   const sb = await supabaseServer();
@@ -41,7 +47,7 @@ export async function createOrg(f: FormData) {
 export async function createProduct(f: FormData) {
   const { sb, org } = await ctx();
   let msg = "Producto creado";
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     const unit = normUnit(s(f, "unit") || "u");
     if (!unit) throw new Error(`Elegí una unidad de medida de la lista (${UNITS.join(", ")}). Para cargar cantidad usá «Stock inicial».`);
     const price = s(f, "price") === "" ? null : num(s(f, "price")), per = s(f, "price_per") === "" ? 1 : num(s(f, "price_per"));
@@ -50,8 +56,10 @@ export async function createProduct(f: FormData) {
     const qty = s(f, "qty") === "" ? 0 : num(s(f, "qty"));
     if (!(qty >= 0)) throw new Error("El stock inicial no puede ser negativo");
     if (qty > 0 && !s(f, "warehouse")) throw new Error("Elegí el depósito del stock inicial (si no tenés, creá uno primero)");
-    const { data, error } = await sb.from("products").insert({ organization_id: org.id, sku: s(f, "sku"), name: s(f, "name"), unit, gtin: s(f, "gtin") || null, min_stock: Number(s(f, "min_stock") || 0), price, price_per: per }).select("id").single();
-    if (error) throw new Error(error.code === "23505" ? "Ya existe un producto con ese SKU" : error.message);
+    const gtinRaw = s(f, "gtin").replace(/[\s-]/g, "");
+    if (gtinRaw) { const v = validateGtin(gtinRaw); if (!v.ok) throw new Error(`GTIN: ${v.error}`); if (await gtinTaken(sb, org.id, gtinRaw)) throw new Error("Ya existe un producto con ese GTIN en tu empresa."); }
+    const { data, error } = await sb.from("products").insert({ organization_id: org.id, sku: s(f, "sku"), name: s(f, "name"), unit, gtin: gtinRaw || null, min_stock: Number(s(f, "min_stock") || 0), price, price_per: per, iva: ivaOf(f) }).select("id").single();
+    if (error) throw new Error(error.code === "23505" ? (/gtin/i.test(error.message) ? "Ya existe un producto con ese GTIN en tu empresa" : "Ya existe un producto con ese SKU") : error.message);
     if (qty > 0) {
       try { await inv.stockIn(sb, { org: org.id, warehouse: s(f, "warehouse"), product: data.id, lot: s(f, "lot") || "INICIAL", qty, type: "RECEIPT", expires: s(f, "expires") }); }
       catch (e: any) { throw new Error(`El producto se creó, pero no se pudo cargar el stock: ${e?.issues?.[0]?.message ?? e?.message}`); }
@@ -61,30 +69,30 @@ export async function createProduct(f: FormData) {
 }
 export async function createWarehouse(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", () => inv.call(sb, "create_warehouse", { p_org: org.id, p_name: s(f, "name") }), "Depósito creado");
+  await run(back(f, PATH.products), () => inv.call(sb, "create_warehouse", { p_org: org.id, p_name: s(f, "name") }), "Depósito creado");
 }
 export async function stockIn(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", () => inv.stockIn(sb, { org: org.id, warehouse: s(f, "warehouse"), product: s(f, "product"), lot: s(f, "lot"), qty: s(f, "qty"), note: s(f, "note"), type: s(f, "type") || "RECEIPT", expires: s(f, "expires") }), "Stock registrado");
+  await run(back(f, PATH.products), () => inv.stockIn(sb, { org: org.id, warehouse: s(f, "warehouse"), product: s(f, "product"), lot: s(f, "lot"), qty: s(f, "qty"), note: s(f, "note"), type: s(f, "type") || "RECEIPT", expires: s(f, "expires") }), "Stock registrado");
 }
 export async function moveStock(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", () => inv.moveStock(sb, { org: org.id, position: s(f, "position"), to: s(f, "to") || undefined, qty: s(f, "qty"), note: s(f, "note"), type: s(f, "type") }), "Movimiento registrado");
+  await run(back(f, PATH.products), () => inv.moveStock(sb, { org: org.id, position: s(f, "position"), to: s(f, "to") || undefined, qty: s(f, "qty"), note: s(f, "note"), type: s(f, "type") }), "Movimiento registrado");
 }
-export async function connect(f: FormData) { const { sb, org } = await ctx(); await run("/network", () => inv.requestConnection(sb, org.id, s(f, "tax_id")), "Solicitud enviada"); }
-export async function accept(f: FormData) { const { sb } = await ctx(); await run("/network", () => inv.acceptConnection(sb, s(f, "id")), "Conexión activa"); }
+export async function connect(f: FormData) { const { sb, org } = await ctx(); await run(back(f, PATH.partners), () => inv.requestConnection(sb, org.id, s(f, "tax_id")), "Solicitud enviada"); }
+export async function accept(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.partners), () => inv.acceptConnection(sb, s(f, "id")), "Conexión activa"); }
 export async function ship(f: FormData) {
   const { sb } = await ctx();
-  await run("/network", () => inv.shipToOrg(sb, { position: s(f, "position"), toOrg: s(f, "to_org"), qty: s(f, "qty") }), "Envío despachado");
+  await run(back(f, PATH.shipments), () => inv.shipToOrg(sb, { position: s(f, "position"), toOrg: s(f, "to_org"), qty: s(f, "qty") }), "Envío despachado");
 }
 export async function receive(f: FormData) {
   const { sb } = await ctx();
-  await run("/network", () => inv.receiveShipment(sb, { ship: s(f, "ship"), warehouse: s(f, "warehouse"), qty: s(f, "qty") }), "Recepción confirmada");
+  await run(back(f, PATH.shipments), () => inv.receiveShipment(sb, { ship: s(f, "ship"), warehouse: s(f, "warehouse"), qty: s(f, "qty") }), "Recepción confirmada");
 }
 export async function importStock(f: FormData) {
   const { sb, org } = await ctx();
   let summary = "Stock importado";
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     const file = f.get("file");
     const text = file instanceof File && file.size > 0 ? await file.text() : s(f, "csv");
     if (!text.trim()) throw new Error("Subí un archivo CSV o pegá las filas");
@@ -117,7 +125,7 @@ export async function importStock(f: FormData) {
 }
 export async function saveBom(f: FormData) {
   const { sb, org } = await ctx();
-  await run(back(f, "/production"), async () => {
+  await run(back(f, PATH.production), async () => {
     const comps = f.getAll("comp").map(String), qtys = f.getAll("qty").map(String);
     let items: { component: string; qty: number }[];
     if (comps.length) {
@@ -139,17 +147,17 @@ export async function saveBom(f: FormData) {
 }
 export async function produce(f: FormData) {
   const { sb, org } = await ctx();
-  await run(back(f, "/production"), () => inv.call(sb, "produce", { p_org: org.id, p_wh: s(f, "warehouse"), p_product: s(f, "product"), p_qty: num(s(f, "qty")), p_lot: s(f, "lot"), p_expires: s(f, "expires") || null }), "Producción registrada");
+  await run(back(f, PATH.production), () => inv.call(sb, "produce", { p_org: org.id, p_wh: s(f, "warehouse"), p_product: s(f, "product"), p_qty: num(s(f, "qty")), p_lot: s(f, "lot"), p_expires: s(f, "expires") || null }), "Producción registrada");
 }
 export async function createOrder(f: FormData) {
   const { sb } = await ctx(); const [wh, product, lot] = s(f, "position").split("|");
-  await run("/orders", () => inv.call(sb, "create_sales_order", { p_wh: wh, p_buyer: s(f, "buyer"), p_product: product, p_lot: lot, p_qty: num(s(f, "qty")) }), "Pedido confirmado y stock reservado");
+  await run(back(f, PATH.orders), () => inv.call(sb, "create_sales_order", { p_wh: wh, p_buyer: s(f, "buyer"), p_product: product, p_lot: lot, p_qty: num(s(f, "qty")) }), "Pedido confirmado y stock reservado");
 }
-export async function shipOrder(f: FormData) { const { sb } = await ctx(); await run("/orders", () => inv.call(sb, "ship_sales_order", { p_id: s(f, "id") }), "Pedido despachado"); }
-export async function cancelOrder(f: FormData) { const { sb } = await ctx(); await run("/orders", () => inv.call(sb, "cancel_sales_order", { p_id: s(f, "id") }), "Pedido cancelado, reserva liberada"); }
+export async function shipOrder(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.orders), () => inv.call(sb, "ship_sales_order", { p_id: s(f, "id") }), "Pedido despachado"); }
+export async function cancelOrder(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.orders), () => inv.call(sb, "cancel_sales_order", { p_id: s(f, "id") }), "Pedido cancelado, reserva liberada"); }
 export async function setOffer(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/network", () => inv.call(sb, "set_offer", { p_org: org.id, p_product: s(f, "product"), p_qty: num(s(f, "qty")) }), "Stock publicado para tus socios");
+  await run(back(f, PATH.market), () => inv.call(sb, "set_offer", { p_org: org.id, p_product: s(f, "product"), p_qty: num(s(f, "qty")) }), "Stock publicado para tus socios");
 }
 export async function createInvite(f: FormData) {
   const { sb, org } = await ctx(); let ok = "", err = "";
@@ -162,11 +170,12 @@ export async function createInvite(f: FormData) {
       ok = r.ok ? `Invitación enviada a ${email}. Link: ${link}` : `No se pudo enviar el email. Compartí este link: ${link}`;
     } else ok = `Compartí este link con ${email}: ${link}`;
   } catch (e: any) { err = e.message.replace(/^[A-Z_]+: /, ""); }
-  redirect(`/network?${err ? "e=" + encodeURIComponent(err) : "ok=" + encodeURIComponent(ok)}`);
+  const to = back(f, PATH.partners);
+  redirect(`${to}${to.includes("?") ? "&" : "?"}${err ? "e=" + encodeURIComponent(err) : "ok=" + encodeURIComponent(ok)}`);
 }
 export async function setPrice(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     const raw = s(f, "price"), price = raw === "" ? null : num(raw), per = s(f, "price_per") === "" ? 1 : num(s(f, "price_per"));
     if (price !== null && !(price >= 0)) throw new Error("El precio debe ser un número igual o mayor que cero");
     if (!(per > 0)) throw new Error("«Por cuántas unidades» debe ser mayor que cero");
@@ -178,15 +187,15 @@ export async function setPrice(f: FormData) {
 export async function requestPurchase(f: FormData) {
   const { sb, org } = await ctx();
   const [supplier, product] = s(f, "offer").split("|");
-  await run(back(f, "/orders"), () => inv.call(sb, "request_purchase", { p_org: org.id, p_supplier: supplier, p_product: product, p_qty: num(s(f, "qty")), p_note: s(f, "note") || null }), "Pedido de compra enviado al proveedor");
+  await run(back(f, PATH.orders), () => inv.call(sb, "request_purchase", { p_org: org.id, p_supplier: supplier, p_product: product, p_qty: num(s(f, "qty")), p_note: s(f, "note") || null }), "Pedido de compra enviado al proveedor");
 }
-export async function acceptPurchase(f: FormData) { const { sb } = await ctx(); await run("/orders", () => inv.call(sb, "accept_purchase_request", { p_id: s(f, "id") }), "Pedido aceptado: el stock quedó reservado y ya podés despacharlo"); }
-export async function rejectPurchase(f: FormData) { const { sb } = await ctx(); await run("/orders", () => inv.call(sb, "reject_purchase_request", { p_id: s(f, "id") }), "Pedido rechazado"); }
-export async function cancelPurchase(f: FormData) { const { sb } = await ctx(); await run("/orders", () => inv.call(sb, "cancel_purchase_request", { p_id: s(f, "id") }), "Pedido de compra cancelado"); }
+export async function acceptPurchase(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.orders), () => inv.call(sb, "accept_purchase_request", { p_id: s(f, "id") }), "Pedido aceptado: el stock quedó reservado y ya podés despacharlo"); }
+export async function rejectPurchase(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.orders), () => inv.call(sb, "reject_purchase_request", { p_id: s(f, "id") }), "Pedido rechazado"); }
+export async function cancelPurchase(f: FormData) { const { sb } = await ctx(); await run(back(f, PATH.orders), () => inv.call(sb, "cancel_purchase_request", { p_id: s(f, "id") }), "Pedido de compra cancelado"); }
 // Editar y eliminar productos / corregir stock (toda corrección de stock queda en el historial con su motivo)
 export async function updateProduct(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     const unit = s(f, "unit");
     if (unit !== s(f, "unit_current") && !normUnit(unit)) throw new Error(`Elegí una unidad de medida de la lista (${UNITS.join(", ")})`);
     const price = s(f, "price") === "" ? null : num(s(f, "price")), per = s(f, "price_per") === "" ? 1 : num(s(f, "price_per")), min = s(f, "min_stock") === "" ? 0 : num(s(f, "min_stock"));
@@ -194,13 +203,15 @@ export async function updateProduct(f: FormData) {
     if (!(per > 0)) throw new Error("«Por cuántas unidades» debe ser mayor que cero");
     if (!(min >= 0)) throw new Error("El stock mínimo no puede ser negativo");
     if (!s(f, "sku") || !s(f, "name")) throw new Error("SKU y nombre son obligatorios");
-    const { error } = await sb.from("products").update({ sku: s(f, "sku"), name: s(f, "name"), unit, gtin: s(f, "gtin") || null, min_stock: min, price, price_per: per }).eq("id", s(f, "id")).eq("organization_id", org.id);
-    if (error) throw new Error(error.code === "23505" ? "Ya existe otro producto con ese SKU" : "No tenés permiso para editar productos");
+    const gtinRaw = s(f, "gtin").replace(/[\s-]/g, "");
+    if (gtinRaw) { const v = validateGtin(gtinRaw); if (!v.ok) throw new Error(`GTIN: ${v.error}`); if (await gtinTaken(sb, org.id, gtinRaw, s(f, "id"))) throw new Error("Ya existe otro producto con ese GTIN en tu empresa."); }
+    const { error } = await sb.from("products").update({ sku: s(f, "sku"), name: s(f, "name"), unit, gtin: gtinRaw || null, min_stock: min, price, price_per: per, iva: ivaOf(f) }).eq("id", s(f, "id")).eq("organization_id", org.id);
+    if (error) throw new Error(error.code === "23505" ? (/gtin/i.test(error.message) ? "Ya existe otro producto con ese GTIN en tu empresa" : "Ya existe otro producto con ese SKU") : "No tenés permiso para editar productos");
   }, "Producto actualizado");
 }
 export async function deleteProduct(f: FormData) {
   const { sb, org } = await ctx();
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     if (!f.get("confirm")) throw new Error("Marcá «Confirmo que quiero eliminarlo» para continuar");
     await inv.call(sb, "delete_product", { p_org: org.id, p_product: s(f, "id") });
   }, "Producto eliminado");
@@ -208,7 +219,7 @@ export async function deleteProduct(f: FormData) {
 async function changeStock(f: FormData, remove: boolean) {
   const { sb, org } = await ctx();
   let msg = "Stock corregido";
-  await run("/products", async () => {
+  await run(back(f, PATH.products), async () => {
     const note = s(f, "note");
     if (!note) throw new Error("Indicá el motivo de la corrección (queda en el historial)");
     const position = s(f, "position"), [wh, product, lot] = position.split("|");

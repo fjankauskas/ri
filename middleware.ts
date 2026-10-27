@@ -1,6 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(req: NextRequest) {
+  // Resolvedor público de GS1 Digital Link (el QR de un producto lo abre cualquier persona, sin sesión)
+  const path = req.nextUrl.pathname;
+  if (path.startsWith("/id/") || path === "/api/gs1/resolve") return NextResponse.next();
   let res = NextResponse.next({ request: req });
   const sb = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!, {
     cookies: {

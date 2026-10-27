@@ -1,40 +1,47 @@
 @import "tailwindcss";
 
-/* Tema claro/oscuro por clase: <html class="dark">. Se alterna con el botón del encabezado y se recuerda en el navegador. */
+/* Tema claro/oscuro por clase: <html class="dark"> */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Proporción 60 / 30 / 10
-   Oscuro: negro 60 % (fondo) · verde 30 % (superficies, tablas, acentos) · blanco 10 % (texto y líneas).
-   Claro:  la misma proporción invertida: blanco 60 % · verde 30 % · negro 10 %. */
+/* Oscuro: base #111827 · superficies verdes (30 %) · texto blanco (10 %). Claro: blanco · verde claro · #111827. */
 :root {
   --bg: #ffffff;
-  --surface: #e3f2eb;
-  --surface-2: #cde6da;
-  --ink: #000000;
-  --mute: #55625c;
-  --line: rgb(0 0 0 / 0.16);
-  --accent: #0a6b4d;
+  --card: #f9fafb;
+  --surface: #e6f4ed;
+  --surface-2: #cfe9dc;
+  --field: #ffffff;
+  --fline: #d1d5db;
+  --ink: #111827;
+  --mute: #6b7280;
+  --line: #e5e7eb;
+  --accent: #047857;
   --on-accent: #ffffff;
-  --good: #0a6b4d;
-  --bad: #b3261e;
+  --good: #047857;
+  --bad: #b91c1c;
 }
 .dark {
-  --bg: #000000;
-  --surface: #0b2f26;
-  --surface-2: #10453a;
-  --ink: #ffffff;
-  --mute: rgb(255 255 255 / 0.66);
-  --line: rgb(255 255 255 / 0.18);
-  --accent: #3fdc9c;
-  --on-accent: #00130d;
-  --good: #3fdc9c;
-  --bad: #ff7a6b;
+  --bg: #111827;
+  --card: #1f2937;
+  --surface: #12342d;
+  --surface-2: #194a3f;
+  --field: #374151;
+  --fline: #4b5563;
+  --ink: #f9fafb;
+  --mute: #9ca3af;
+  --line: #374151;
+  --accent: #34d399;
+  --on-accent: #022c22;
+  --good: #34d399;
+  --bad: #f87171;
 }
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-card: var(--card);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-field: var(--field);
+  --color-fline: var(--fline);
   --color-ink: var(--ink);
   --color-mute: var(--mute);
   --color-line: var(--line);
@@ -45,7 +52,6 @@
   --font-sans: var(--font-jost), "Helvetica Neue", Arial, sans-serif;
 }
 
-/* ---------- Base: elementos HTML, sin tarjetas ni sombras; líneas finas y esquinas rectas ---------- */
 @layer base {
   html { color-scheme: light; }
   html.dark { color-scheme: dark; }
@@ -53,78 +59,63 @@
   ::selection { background: var(--accent); color: var(--on-accent); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  h1 { @apply mb-2 text-4xl font-light tracking-tight; }
-  h2 { @apply mb-4 text-xl font-light; }
+  h1 { @apply text-3xl font-light tracking-tight md:text-4xl; }
+  h2 { @apply text-lg font-medium; }
+  h3 { @apply font-medium; }
   b, strong { @apply font-medium; }
   a { @apply text-accent underline-offset-4 hover:underline; }
+  summary { list-style: none; }
+  summary::-webkit-details-marker { display: none; }
 
-  section { @apply mb-10 overflow-x-auto border-t border-line pt-6; }
-  table { @apply w-full border-collapse text-sm; }
-  th { @apply bg-surface px-3 py-3 text-left font-normal text-mute; }
-  td { @apply border-b border-line px-3 py-3 align-top; }
-  tbody tr:hover td { background: color-mix(in oklab, var(--surface) 40%, transparent); }
-
-  label { @apply grid gap-1.5 text-sm text-mute; }
-  input, select, textarea { @apply rounded-none border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none; }
+  label { @apply grid gap-1.5 text-sm font-medium text-ink; }
+  input, select, textarea { @apply w-full rounded-lg border border-fline bg-field px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none; }
   input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 1px var(--accent); }
-  input::placeholder, textarea::placeholder { color: var(--mute); opacity: 0.7; }
-  input[type="checkbox"], input[type="radio"] { @apply h-4 w-4 border-0 bg-transparent p-0 accent-accent; }
-  input[type="file"]::file-selector-button { @apply mr-3 cursor-pointer border-0 bg-surface-2 px-3 py-1.5 text-ink; }
-
-  button { @apply cursor-pointer rounded-none border border-ink/40 bg-transparent px-5 py-2.5 text-sm text-ink transition-colors hover:border-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40; }
+  input::placeholder, textarea::placeholder { color: var(--mute); opacity: 0.75; }
+  input[type="checkbox"], input[type="radio"] { @apply h-4 w-4 p-0 accent-accent; }
+  input[type="file"]::file-selector-button { @apply mr-3 cursor-pointer rounded-md border-0 bg-surface-2 px-3 py-1.5 text-ink; }
+  button { @apply cursor-pointer rounded-lg border border-fline bg-field px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40; }
 }
 
-/* ---------- Componentes con los nombres de clase que ya usan las pantallas ---------- */
 @layer components {
   .mu { @apply text-mute; }
   .n { @apply text-right tabular-nums; }
-  .in, .good { @apply text-good; }
-  .out, .bad { @apply text-bad; }
+  .in { @apply text-good; }
+  .out { @apply text-bad; }
   .f { @apply grid gap-4; }
-  /* .grid = columnas automáticas de la app. En código nuevo usá flex en vez de la utilidad grid de Tailwind para no mezclarlas. */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2.5rem; }
-  .msg { @apply mb-6 border-l-2 border-current px-4 py-3 text-sm; }
+  .fgrid { @apply grid gap-4 sm:grid-cols-2; }
+  .fgrid > .full { @apply sm:col-span-2; }
 
-  .p { @apply border-accent bg-accent font-medium text-on-accent hover:brightness-110; }
-  button.danger { @apply border-bad text-bad; }
-  .tag { @apply inline-block whitespace-nowrap border border-line px-2 py-0.5 text-xs text-mute; }
-  .tag.low { @apply border-bad text-bad; }
-  .tag.ok { @apply border-good text-good; }
-  code.id { @apply font-mono text-xs text-mute; }
-  details summary { @apply cursor-pointer text-accent; }
+  /* Botones: gradiente monocromático (estilo Flowbite) */
+  .btn, .p { @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border-0 px-5 py-2.5 text-center text-sm font-medium text-white no-underline transition hover:no-underline hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40; }
+  .btn-green, .p { background-image: linear-gradient(to right, #059669, #047857, #065f46); }
+  .btn-teal { background-image: linear-gradient(to right, #0d9488, #0f766e, #115e59); }
+  .btn-cyan { background-image: linear-gradient(to right, #0891b2, #0e7490, #155e75); }
+  .btn-red, button.danger { background-image: linear-gradient(to right, #dc2626, #b91c1c, #991b1b); @apply border-0 text-white; }
+  .btn-gray { @apply border border-fline bg-field text-ink; }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
 
-  .bar { @apply mb-6 flex gap-3; }
-  .bar input { @apply min-w-0 flex-1; }
-  .head { @apply flex items-center justify-between; }
-  .head a { @apply text-lg no-underline; }
-  .row { display: grid; grid-template-columns: 1fr 92px; gap: 0.5rem; }
-  .r3 { display: grid; grid-template-columns: 1fr 88px 36px; gap: 0.5rem; }
+  /* Tabla de columnas alternadas dentro de un contenedor redondeado */
+  .tw { @apply overflow-x-auto rounded-xl border border-line; }
+  .tw table { @apply w-full border-collapse text-left text-sm; }
+  .tw th { @apply px-4 py-3 font-normal text-mute; }
+  .tw td { @apply px-4 py-3 align-middle; }
+  .tw thead tr { @apply border-b border-line; }
+  .tw tbody tr { @apply border-t border-line; }
+  .tw tbody tr:first-child { border-top: 0; }
+  .tw th:nth-child(even), .tw td:nth-child(even) { background: color-mix(in oklab, var(--card) 70%, transparent); }
+  .tw tbody tr:hover td { background: color-mix(in oklab, var(--surface) 55%, transparent); }
+  .tw tr[aria-selected="true"] td { background: var(--surface); }
+  .tw td.k { @apply font-medium; }
+
+  .r3 { display: grid; grid-template-columns: 1fr 88px 40px; gap: 0.5rem; }
   .gtin { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: end; }
   .gtin button { @apply whitespace-nowrap; }
   .tot { @apply mt-1 text-sm; }
   .tot b { @apply text-good; }
   .lotf { @apply mt-3 border-t border-line pt-3; }
-  .ov { @apply fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4; }
-  .ov > div { @apply w-[min(94vw,460px)] border border-line bg-surface p-4; }
-  .ov video { @apply w-full bg-black; }
-
-  /* Productos y stock: opciones a la izquierda, tabla al centro, panel a la derecha */
-  .split { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 2rem; align-items: start; }
-  .split.open { grid-template-columns: 5.5rem minmax(0, 1fr) 22rem; }
-  .split.ro { grid-template-columns: minmax(0, 1fr); }
-  .split > section { margin-bottom: 0; }
-  .split.open > section:last-child { @apply border-t-0 bg-surface p-6; }
-  .rail { @apply sticky top-24 flex flex-col gap-1 bg-surface p-2; }
-  .rail a { @apply flex flex-col items-center gap-1 border-l-2 border-transparent px-1 py-3 text-center text-xs leading-tight text-ink no-underline hover:bg-surface-2 hover:no-underline; }
-  .rail a.on { @apply border-accent bg-surface-2 text-accent; }
-  .rail a b { @apply text-xl font-normal; filter: grayscale(1); }
-
-  @media (max-width: 1100px) {
-    .split, .split.open { grid-template-columns: minmax(0, 1fr); }
-    .rail { position: static; flex-direction: row; flex-wrap: wrap; }
-    .rail a { flex: 1 1 4.5rem; border-left: 0; border-bottom: 2px solid transparent; }
-    .rail a.on { border-bottom-color: var(--accent); }
-  }
+  .ov { @apply fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4; }
+  .ov > div { @apply w-[min(94vw,460px)] rounded-xl border border-line bg-card p-4; }
+  .ov video { @apply w-full rounded-lg bg-black; }
 }
 
 @media (prefers-reduced-motion: reduce) {
