@@ -20,7 +20,7 @@ export default async function ProductsView({ sb, role, P }: ViewCtx): Promise<Vi
   const q = (P.q ?? "").trim().toLowerCase(), f = P.f ?? "all", sel = P.id ?? "", modal = P.modal ?? "";
   const canWrite = role !== "VIEWER";
   const [prods, whs, pos, boms] = await Promise.all([
-    sb.from("products").select("id, sku, name, unit, gtin, min_stock, price, price_per, iva").eq("is_active", true).order("name"),
+    sb.from("products").select("id, sku, name, unit, gtin, min_stock, price, price_per, iva, avg_cost").eq("is_active", true).order("name"),
     sb.from("warehouses").select("id, name").eq("is_active", true).order("name"),
     sb.from("inventory_positions").select(POS).gt("quantity", 0),
     sb.from("bill_of_materials").select("id, product_id").eq("is_active", true),
@@ -166,6 +166,8 @@ export default async function ProductsView({ sb, role, P }: ViewCtx): Promise<Vi
             <label>IVA de venta<select name="iva" defaultValue={editing.iva ?? "21"}>{IVA_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}</select></label>
             <GtinField key={editing.id} initial={editing.gtin ?? ""} />
             <label>Stock mínimo para alertar<input name="min_stock" type="number" step="any" min="0" defaultValue={editing.min_stock ?? 0} /></label>
+            <label>Costo unitario neto (opcional)<input name="avg_cost" type="number" step="any" min="0" defaultValue={editing.avg_cost ?? ""} /></label>
+            <p className="text-xs text-mute">Se actualiza solo al recibir compras (promedio ponderado). Podés fijarlo a mano si todavía no compraste: se usa para el margen en Reportes.</p>
             <p className="text-xs text-mute">Cambiar la unidad no convierte las cantidades que ya tenés cargadas.</p>
             <button className="btn btn-green">Guardar cambios</button>
           </form>

@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-// Navegación principal: cuatro pantallas. «Red» muestra un globito con lo que espera una acción tuya.
-const ITEMS = [["/inventory", "Inventario"], ["/sales", "Ventas"], ["/network", "Red"], ["/gs1", "GS1"]] as const;
+// Navegación principal: siete secciones. «Red» muestra un globito con lo que espera una acción tuya.
+const ITEMS = [["/inventory", "Inventario"], ["/purchases", "Compras"], ["/sales", "Ventas"], ["/network", "Red"], ["/gs1", "GS1"], ["/reports", "Reportes"], ["/team", "Equipo"]] as const;
 export function SiteNav({ redBadge }: { redBadge: number }) {
   const path = usePathname();
   return (
-    <nav aria-label="Principal" className="flex items-center gap-8">
+    <nav aria-label="Principal" className="flex flex-wrap items-center gap-x-6 gap-y-2">
       {ITEMS.map(([href, label]) => {
         const on = path === href || path.startsWith(href + "/");
         return (

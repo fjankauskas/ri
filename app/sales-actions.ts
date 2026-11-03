@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ctx } from "@/lib/ctx";
+import { mustCan } from "@/lib/perms-server";
 import { isValidCuit } from "@/lib/arca/cuit";
 import { hasEncryptionKey } from "@/lib/arca/crypto";
 import { hasServiceKey } from "@/lib/supabase/admin";
@@ -17,9 +18,9 @@ function need(role: string, roles: string[], what: string) { if (!roles.includes
 const withParam = (path: string, k: string, v: string) => `${path}${path.includes("?") ? "&" : "?"}${k}=${encodeURIComponent(v)}`;
 
 type Result = void | { path?: string; ok?: string };
-async function run(path: string, fn: () => Promise<Result>, ok: string) {
+async function run(path: string, fn: () => Promise<Result>, ok: string, perm?: string[]) {
   let err = "", out: Result = undefined;
-  try { out = await fn(); } catch (e: any) { err = e?.message ?? "Error inesperado"; }
+  try { if (perm) await mustCan(perm[0], perm[1]); out = await fn(); } catch (e: any) { err = e?.message ?? "Error inesperado"; }
   revalidatePath("/", "layout");
   const to = (out && out.path) || path;
   redirect(err ? withParam(to, "e", err) : withParam(to, "ok", (out && out.ok) || ok));
@@ -45,7 +46,7 @@ export async function saveCustomer(f: FormData) {
     const q = id ? sb.from("customers").update(row).eq("id", id).eq("organization_id", org.id) : sb.from("customers").insert({ ...row, organization_id: org.id });
     const { error } = await q;
     if (error) throw new Error(error.code === "23505" ? "Ya existe un cliente con ese documento." : error.message);
-  }, s(f, "id") ? "Cliente actualizado" : "Cliente creado");
+  }, s(f, "id") ? "Cliente actualizado" : "Cliente creado", s(f, "id") ? ["sales", "edit"] : ["sales", "create"]);
 }
 export async function deleteCustomer(f: FormData) {
   const { sb, org, role } = await ctx();
@@ -53,7 +54,7 @@ export async function deleteCustomer(f: FormData) {
     need(role, SELL, "eliminar clientes");
     const { error } = await sb.from("customers").update({ is_active: false }).eq("id", s(f, "id")).eq("organization_id", org.id);
     if (error) throw new Error(error.message);
-  }, "Cliente eliminado (sus ventas anteriores se conservan)");
+  }, "Cliente eliminado (sus ventas anteriores se conservan)", ["sales", "delete"]);
 }
 
 // ---------- Ventas ----------
@@ -75,11 +76,11 @@ export async function createSale(f: FormData) {
       await arca.invoiceSale(org.id, String(id), user.id);
       return { path: here, ok: "Venta registrada, stock descontado y factura emitida" };
     } catch (e: any) { return { path: withParam(here, "e", `La venta se registró y el stock se descontó, pero la factura no se emitió: ${e.message}`) }; }
-  }, "Venta registrada");
+  }, "Venta registrada", ["sales", "create"]);
 }
 export async function invoiceSale(f: FormData) {
   const { org, role, user } = await ctx();
-  await run(back(f, PATH.sales), async () => { need(role, SELL, "emitir facturas"); needServer(); await arca.invoiceSale(org.id, s(f, "sale"), user.id); }, "Factura emitida y autorizada por ARCA");
+  await run(back(f, PATH.sales), async () => { need(role, SELL, "emitir facturas"); needServer(); await arca.invoiceSale(org.id, s(f, "sale"), user.id); }, "Factura emitida y autorizada por ARCA", ["invoicing", "create"]);
 }
 export async function creditNote(f: FormData) {
   const { org, role, user } = await ctx();
@@ -87,7 +88,7 @@ export async function creditNote(f: FormData) {
     need(role, SELL, "emitir notas de crédito"); needServer();
     if (!f.get("confirm")) throw new Error("Marcá «Confirmo que quiero anular esta factura» para continuar.");
     await arca.issueCreditNote(org.id, s(f, "invoice"), user.id);
-  }, "Nota de crédito emitida: la factura quedó anulada. Si devolvieron mercadería, reingresá el stock desde Inventario");
+  }, "Nota de crédito emitida: la factura quedó anulada. Si devolvieron mercadería, reingresá el stock desde Inventario", ["invoicing", "approve"]);
 }
 
 // ---------- Configuración de ARCA (solo dueños y administradores) ----------
@@ -97,15 +98,15 @@ export async function saveArcaProfile(f: FormData) {
     need(role, ADMIN, "cambiar la configuración fiscal"); needServer();
     const note = await arca.saveProfile(org.id, { cuit: s(f, "cuit"), legal_name: s(f, "legal_name"), iva_condition: s(f, "iva_condition"), address: s(f, "address"), gross_income: s(f, "gross_income"), activity_start: s(f, "activity_start"), active_env: s(f, "active_env") || "homologacion", enabled: !!f.get("enabled") });
     return { ok: `Datos fiscales guardados.${note}` };
-  }, "Datos fiscales guardados");
+  }, "Datos fiscales guardados", ["invoicing", "edit"]);
 }
 export async function saveArcaPv(f: FormData) {
   const { org, role } = await ctx();
-  await run(back(f, PATH.arca), async () => { need(role, ADMIN, "cambiar la configuración fiscal"); needServer(); await arca.savePuntoVenta(org.id, s(f, "env"), num(s(f, "punto_venta"))); }, "Punto de venta guardado");
+  await run(back(f, PATH.arca), async () => { need(role, ADMIN, "cambiar la configuración fiscal"); needServer(); await arca.savePuntoVenta(org.id, s(f, "env"), num(s(f, "punto_venta"))); }, "Punto de venta guardado", ["invoicing", "edit"]);
 }
 export async function generateCsr(f: FormData) {
   const { org, role } = await ctx();
-  await run(back(f, PATH.arca), async () => { need(role, ADMIN, "generar certificados"); needServer(); await arca.createCsr(org.id, s(f, "env")); }, "Clave y solicitud (CSR) generadas. Copiá la solicitud y subila a ARCA");
+  await run(back(f, PATH.arca), async () => { need(role, ADMIN, "generar certificados"); needServer(); await arca.createCsr(org.id, s(f, "env")); }, "Clave y solicitud (CSR) generadas. Copiá la solicitud y subila a ARCA", ["invoicing", "edit"]);
 }
 export async function uploadCert(f: FormData) {
   const { org, role } = await ctx();
@@ -114,7 +115,7 @@ export async function uploadCert(f: FormData) {
     const pem = (await readFile(f, "cert_file")) || s(f, "cert");
     if (!pem) throw new Error("Pegá el certificado (.crt) o elegí el archivo.");
     await arca.saveCertificate(org.id, s(f, "env"), pem);
-  }, "Certificado guardado. Ahora probá la conexión");
+  }, "Certificado guardado. Ahora probá la conexión", ["invoicing", "edit"]);
 }
 export async function importCreds(f: FormData) {
   const { org, role } = await ctx();
@@ -123,7 +124,7 @@ export async function importCreds(f: FormData) {
     const key = (await readFile(f, "key_file")) || s(f, "key"), cert = (await readFile(f, "cert_file")) || s(f, "cert");
     if (!key || !cert) throw new Error("Hacen falta la clave privada (.key) y el certificado (.crt).");
     await arca.importCredentials(org.id, s(f, "env"), key, cert);
-  }, "Clave y certificado importados. Ahora probá la conexión");
+  }, "Clave y certificado importados. Ahora probá la conexión", ["invoicing", "edit"]);
 }
 export async function testArca(f: FormData) {
   const { org, role } = await ctx();
@@ -132,5 +133,5 @@ export async function testArca(f: FormData) {
     const r = await arca.testConnection(org.id, s(f, "env"));
     if (!r.ok) throw new Error(r.message);
     return { ok: r.message };
-  }, "Conexión correcta");
+  }, "Conexión correcta", ["invoicing", "edit"]);
 }

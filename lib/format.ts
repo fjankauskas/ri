@@ -1,7 +1,7 @@
 export const n = (x: number | string) => Number(x).toLocaleString("es-AR", { maximumFractionDigits: 3 });
 export const money = (x: number | string | null | undefined) => (x == null || x === "" ? "—" : Number(x).toLocaleString("es-AR", { style: "currency", currency: "ARS" }));
 export const day = (d: string | null | undefined) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
-export const when = (t: string) => new Date(t).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+export const when = (t: string) => new Date(t).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" });
 export const TYPES: Record<string, string> = { RECEIPT: "Recepción", SHIPMENT: "Despacho", TRANSFER: "Transferencia", SALE: "Venta", PRODUCTION_INPUT: "Consumo", PRODUCTION_OUTPUT: "Producción", ADJUSTMENT: "Ajuste" };
 export const posValue = (p: any) => `${p.warehouse_id}|${p.product_id}|${p.lot_id}`;
 export const posLabel = (p: any) => `${p.products.name} · lote ${p.lots.lot_number} · ${p.warehouses.name} (disp. ${n(p.quantity - p.reserved)} ${p.products.unit})${p.products.price != null ? " · " + priceLabel(p.products.price, p.products.price_per, p.products.unit) : ""}`;

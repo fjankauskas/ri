@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ctx } from "@/lib/ctx";
+import { mustCan } from "@/lib/perms-server";
 import { validateGtin, toGtin14, validateKey } from "@/lib/gs1/check";
 import { gtin14 as buildGtin14, gln as buildGln, sscc as buildSscc } from "@/lib/gs1/keys";
 import { allocateGtin, getSettings, gtinTaken } from "@/lib/gs1/data";
@@ -15,9 +16,9 @@ const STOCK = ["OWNER", "ADMIN", "INVENTORY_MANAGER"], ADMIN = ["OWNER", "ADMIN"
 function need(role: string, roles: string[], what: string) { if (!roles.includes(role)) throw new Error(`Tu rol no permite ${what}.`); }
 const clean = (e: any) => String(e?.message ?? "Error inesperado").replace(/^[A-Z_]+: /, "");
 type Result = void | { ok?: string };
-async function run(path: string, fn: () => Promise<Result>, ok: string) {
+async function run(path: string, fn: () => Promise<Result>, ok: string, perm?: string[]) {
   let err = "", out: Result = undefined;
-  try { out = await fn(); } catch (e: any) { err = clean(e); }
+  try { if (perm) await mustCan(perm[0], perm[1]); out = await fn(); } catch (e: any) { err = clean(e); }
   revalidatePath("/", "layout");
   redirect(err ? withParam(path, "e", err) : withParam(path, "ok", (out && out.ok) || ok));
 }
@@ -35,7 +36,7 @@ export async function saveGs1Settings(f: FormData) {
     if (gln) { const v = validateKey("GLN", gln); if (!v.ok) throw new Error(`GLN: ${v.error}`); }
     const { error } = await sb.from("gs1_settings").upsert({ organization_id: org.id, company_prefix: prefix || null, gln: gln || null, public_enabled: !!f.get("public_enabled"), updated_at: new Date().toISOString() });
     if (error) throw new Error(error.message);
-  }, "Configuración GS1 guardada");
+  }, "Configuración GS1 guardada", ["gs1", "edit"]);
 }
 
 // ---------- GTIN ----------
@@ -53,7 +54,7 @@ export async function assignGtin(f: FormData) {
     const g = await allocateGtin(sb, org.id, s(f, "mode") === "internal" ? "internal" : "gs1");
     await setGtin(sb, org.id, id, g); msg = `GTIN asignado: ${g}`;
     return { ok: msg };
-  }, msg);
+  }, msg, ["gs1", "edit"]);
 }
 /** Asigna GTIN a todos los productos activos que todavía no tienen. */
 export async function assignAllGtins(f: FormData) {
@@ -66,7 +67,7 @@ export async function assignAllGtins(f: FormData) {
     if (!list.length) throw new Error("No hay productos sin GTIN.");
     for (const p of list) await setGtin(sb, org.id, p.id, await allocateGtin(sb, org.id, mode));
     return { ok: `Se asignó GTIN a ${list.length} producto(s)` };
-  }, "GTIN asignados");
+  }, "GTIN asignados", ["gs1", "edit"]);
 }
 export async function saveProductGtin(f: FormData) {
   const { sb, org, role } = await ctx();
@@ -77,7 +78,7 @@ export async function saveProductGtin(f: FormData) {
     const v = validateGtin(raw); if (!v.ok) throw new Error(v.error);
     if (await gtinTaken(sb, org.id, raw, id)) throw new Error("Ese GTIN ya lo usa otro producto de tu empresa.");
     await setGtin(sb, org.id, id, raw); return { ok: `GTIN guardado (${v.kind})` };
-  }, "GTIN guardado");
+  }, "GTIN guardado", ["gs1", "edit"]);
 }
 const LEVELS: Record<string, [string, number]> = { INNER: ["Pack intermedio", 1], CASE: ["Caja", 2], PALLET: ["Pallet", 3] };
 export async function addPackLevel(f: FormData) {
@@ -97,14 +98,14 @@ export async function addPackLevel(f: FormData) {
     const { error } = await sb.from("product_gtins").insert({ organization_id: org.id, product_id: id, gtin: g, level, units_per_pack: units, description: s(f, "description") || null });
     if (error) throw new Error(dbError(error));
     return { ok: `Presentación guardada: ${LEVELS[level][0]} ${g} (${units} u.)` };
-  }, "Presentación guardada");
+  }, "Presentación guardada", ["gs1", "edit"]);
 }
 export async function deletePackLevel(f: FormData) {
   const { sb, org, role } = await ctx();
   await run(back(f, PATH.products), async () => {
     need(role, STOCK, "quitar presentaciones");
     const { error } = await sb.from("product_gtins").delete().eq("id", s(f, "id")).eq("organization_id", org.id); if (error) throw new Error(error.message);
-  }, "Presentación eliminada");
+  }, "Presentación eliminada", ["gs1", "edit"]);
 }
 
 // ---------- Datos maestros ----------
@@ -119,7 +120,7 @@ export async function saveMaster(f: FormData) {
       storage_min_c: num(s(f, "storage_min_c")), storage_max_c: num(s(f, "storage_max_c")), product_url: s(f, "product_url") || null, image_url: s(f, "image_url") || null, description_long: s(f, "description_long") || null, updated_at: new Date().toISOString() };
     for (const u of ["product_url", "image_url"] as const) if (row[u] && !/^https?:\/\//i.test(row[u]!)) throw new Error("Las direcciones web deben empezar con http:// o https://");
     const { error } = await sb.from("product_gs1").upsert(row); if (error) throw new Error(error.message);
-  }, "Datos maestros guardados");
+  }, "Datos maestros guardados", ["gs1", "edit"]);
 }
 
 // ---------- Ubicaciones (GLN) y unidades logísticas (SSCC) ----------
@@ -130,7 +131,7 @@ export async function saveWarehouseGln(f: FormData) {
     let gln = s(f, "gln").replace(/\D/g, "");
     if (!gln && f.get("auto")) { const st = await getSettings(sb, org.id); if (!st.company_prefix) throw new Error("Primero cargá el prefijo de empresa GS1 en «Configuración»."); const { data: n, error } = await sb.rpc("gs1_next", { p_org: org.id, p_kind: "GLN" }); if (error) throw new Error(error.message); gln = buildGln(st.company_prefix, Number(n)); }
     const { error } = await sb.rpc("set_warehouse_gln", { p_org: org.id, p_wh: s(f, "warehouse"), p_gln: gln || null }); if (error) throw new Error(error.message);
-  }, "GLN del depósito guardado");
+  }, "GLN del depósito guardado", ["gs1", "edit"]);
 }
 export async function assignSscc(f: FormData) {
   const { sb, org, role } = await ctx();
@@ -145,5 +146,5 @@ export async function assignSscc(f: FormData) {
       if (!/duplicate|unique/i.test(r.error.message)) throw new Error(r.error.message);
     }
     throw new Error("No se pudo generar un SSCC libre.");
-  }, "SSCC asignado");
+  }, "SSCC asignado", ["gs1", "edit"]);
 }

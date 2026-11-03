@@ -7,7 +7,7 @@ import { EMISOR_LABEL } from "@/lib/billing";
 import type { View, ViewCtx } from "@/lib/view";
 
 const ENVS = [["homologacion", "Homologación (pruebas)"], ["produccion", "Producción"]] as const;
-const when = (t: string) => new Date(t).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+const when = (t: string) => new Date(t).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" });
 
 export default async function ArcaView({ sb, role }: ViewCtx): Promise<View> {
   const admin = ["OWNER", "ADMIN"].includes(role);
