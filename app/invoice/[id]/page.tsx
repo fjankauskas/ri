@@ -26,7 +26,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   return (
     <div className="min-h-screen bg-gray-200 px-4 py-6 print:bg-white print:p-0">
       <div className="mx-auto mb-4 flex max-w-[820px] items-center justify-between print:hidden">
-        <a href="/sales?v=invoices" className="text-sm">← Volver a comprobantes</a><PrintButton />
+        <a href="/commerce?v=invoices&dir=out" className="text-sm">← Volver a comprobantes</a><PrintButton />
       </div>
       <article className="mx-auto max-w-[820px] bg-white p-8 text-sm text-black shadow print:shadow-none">
         {inv.environment === "homologacion" && <p className="mb-4 border-2 border-dashed border-red-600 p-2 text-center font-bold text-red-700">COMPROBANTE DE PRUEBA — SIN VALIDEZ FISCAL (ambiente de homologación)</p>}

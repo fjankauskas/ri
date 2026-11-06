@@ -10,9 +10,9 @@ import * as arca from "@/lib/arca/service";
 
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const num = (x: string) => Number(x.replace(",", "."));
-const PATH = { sales: "/sales?v=sales", customers: "/sales?v=customers", invoices: "/sales?v=invoices", arca: "/sales?v=arca" };
+const PATH = { sales: "/commerce?v=sales", customers: "/commerce?v=customers", invoices: "/commerce?v=invoices&dir=out", arca: "/commerce?v=arca" };
 // Solo se vuelve a rutas propias de Ventas con parámetros simples.
-const back = (f: FormData, def: string) => (/^\/sales(\?[\w=&%.|\-]*)?$/.test(s(f, "back")) ? s(f, "back") : def);
+const back = (f: FormData, def: string) => (/^\/commerce(\?[\w=&%.|\-]*)?$/.test(s(f, "back")) ? s(f, "back") : def);
 const SELL = ["OWNER", "ADMIN", "SALES"], ADMIN = ["OWNER", "ADMIN"];
 function need(role: string, roles: string[], what: string) { if (!roles.includes(role)) throw new Error(`Tu rol no permite ${what}.`); }
 const withParam = (path: string, k: string, v: string) => `${path}${path.includes("?") ? "&" : "?"}${k}=${encodeURIComponent(v)}`;

@@ -26,7 +26,7 @@ export default async function MarginReport({ sb, org, P }: ViewCtx): Promise<Vie
   );
   const aside = (
     <>
-      <Card title="Acciones"><div className="grid gap-2"><a href={`/api/reports/export?${q}`} className="btn btn-green no-underline">Descargar CSV</a><Link href="/purchases?v=orders" className="btn btn-gray no-underline">Órdenes de compra</Link><Link href="/purchases?v=prices" className="btn btn-gray no-underline">Comparar precios de compra</Link></div></Card>
+      <Card title="Acciones"><div className="grid gap-2"><a href={`/api/reports/export?${q}`} className="btn btn-green no-underline">Descargar CSV</a><Link href="/commerce?v=purchases" className="btn btn-gray no-underline">Órdenes de compra</Link><Link href="/commerce?v=prices" className="btn btn-gray no-underline">Comparar precios de compra</Link></div></Card>
       <Card title="Es una estimación"><ul className="grid gap-2 text-sm text-mute"><li>El costo es el <b>promedio ponderado actual</b> de tus compras, no el costo del momento de cada venta.</li><li>Lo enviado a la red se valúa a precio de lista actual.</li><li>No incluye gastos (alquiler, sueldos, flete) ni IVA.</li></ul></Card>
     </>
   );

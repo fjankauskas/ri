@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 // Navegación principal: siete secciones. «Red» muestra un globito con lo que espera una acción tuya.
-const ITEMS = [["/inventory", "Inventario"], ["/purchases", "Compras"], ["/sales", "Ventas"], ["/network", "Red"], ["/gs1", "GS1"], ["/reports", "Reportes"], ["/team", "Equipo"]] as const;
+const ITEMS = [["/inventory", "Inventario"], ["/commerce", "Compras y ventas"], ["/network", "Red"], ["/gs1", "GS1"], ["/reports", "Reportes"], ["/team", "Equipo"]] as const;
 export function SiteNav({ redBadge }: { redBadge: number }) {
   const path = usePathname();
   return (

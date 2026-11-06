@@ -4,7 +4,7 @@ import Icon, { type IconName } from "./Icons";
 import type { Badges } from "@/lib/view";
 import type { Params } from "@/lib/url";
 
-export type MenuItem = { key: string; label: string; icon: IconName; badge?: number };
+export type MenuItem = { key: string; label: string; icon: IconName; badge?: number; group?: string };
 // Disposición de todas las pantallas: submenús a la izquierda · información en el medio · acciones a la derecha (solo si hay).
 export default function Workspace({ base, items, active, org, params, badges, title, intro, aside, children }: {
   base: string; items: MenuItem[]; active: string; org: string; params: Params; badges: Badges; title: string; intro?: string; aside?: React.ReactNode; children: React.ReactNode;
@@ -17,12 +17,15 @@ export default function Workspace({ base, items, active, org, params, badges, ti
           {items.map((it) => {
             const on = it.key === active;
             return (
-              <Link key={it.key} href={`${base}?v=${it.key}`} aria-current={on ? "page" : undefined}
+              <div key={it.key} className="contents">
+              {it.group && <p className="hidden px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-mute lg:block">{it.group}</p>}
+              <Link href={`${base}?v=${it.key}`} aria-current={on ? "page" : undefined}
                 className={`flex items-center gap-3 whitespace-nowrap rounded-lg px-4 py-3 text-sm no-underline hover:no-underline ${on ? "bg-surface font-medium text-accent" : "text-ink hover:bg-card"}`}>
                 <Icon name={it.icon} />
                 <span>{it.label}</span>
                 {!!it.badge && <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white" aria-label={`${it.badge} pendientes`}>{it.badge}</span>}
               </Link>
+              </div>
             );
           })}
         </nav>

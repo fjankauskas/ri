@@ -52,7 +52,7 @@ export default async function ReaderView({ sb, org, P }: ViewCtx): Promise<View>
             <div className="grid gap-2">
               <Link href={`/inventory?v=products&id=${r.product.id}`} className="btn btn-gray no-underline">Ver producto</Link>
               <Link href={`/inventory?v=products&modal=stock&id=${r.product.id}`} className="btn btn-teal no-underline">Ingresar stock</Link>
-              <Link href="/sales?v=sales&modal=sale" className="btn btn-green no-underline">Nueva venta</Link>
+              <Link href="/commerce?v=sales&modal=sale" className="btn btn-green no-underline">Nueva venta</Link>
               {r.lot && <Link href={`/inventory?v=trace&lot=${r.lot.id}`} className="btn btn-gray no-underline">Ver trazabilidad del lote</Link>}
               <Link href={`/gs1?v=products&id=${r.product.id}`} className="btn btn-gray no-underline">Ficha GS1</Link>
             </div>

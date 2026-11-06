@@ -2,13 +2,14 @@ import Link from "next/link";
 import Modal from "@/components/Modal";
 import { Card, Pill, ActionLink, FilterMenu, SearchBar, FormFooter, Empty, type PillTone } from "@/components/ui";
 import { connect, accept, createInvite } from "@/app/actions";
+import { saveNetworkProfile } from "@/app/commerce-actions";
 import { n } from "@/lib/format";
 import { mk } from "@/lib/url";
 import type { View, ViewCtx } from "@/lib/view";
 
 const FILTERS: [string, string][] = [["all", "Todas"], ["active", "Activas"], ["pending", "Pendientes"]];
 
-export default async function PartnersView({ sb, role, P }: ViewCtx): Promise<View> {
+export default async function PartnersView({ sb, org, role, P }: ViewCtx): Promise<View> {
   const L = (patch: Record<string, string | null> = {}) => mk("/network", { ...P, v: "partners" }, patch);
   const q = (P.q ?? "").trim().toLowerCase(), f = P.f ?? "all", modal = P.modal ?? "";
   const canWrite = role !== "VIEWER";
@@ -72,7 +73,9 @@ export default async function PartnersView({ sb, role, P }: ViewCtx): Promise<Vi
       )}
     </div>
   );
+  const { data: prof } = await sb.from("network_profile").select("contact_email, contact_phone, searchable").eq("organization_id", org.id).maybeSingle();
   const aside = canWrite ? (
+    <>
     <Card title="Acciones" sub="Qué podés hacer con tus empresas.">
       <div className="grid gap-2">
         <ActionLink href={L({ modal: "connect" })} icon="plus">Conectar por CUIT</ActionLink>
@@ -80,6 +83,16 @@ export default async function PartnersView({ sb, role, P }: ViewCtx): Promise<Vi
         <ActionLink href="/network?v=market" icon="market" tone="gray">Ver stock de la red</ActionLink>
       </div>
     </Card>
+    <Card title="Cómo te encuentran" sub="Otras empresas pueden buscarte por tu CUIT, y por estos datos si los cargás.">
+      <form action={saveNetworkProfile} className="f">
+        <input type="hidden" name="back" value="/network?v=partners" />
+        <label>Email de contacto<input name="contact_email" type="email" defaultValue={prof?.contact_email ?? ""} /></label>
+        <label>Teléfono / WhatsApp<input name="contact_phone" inputMode="tel" defaultValue={prof?.contact_phone ?? ""} /></label>
+        <label className="flex items-center gap-2 font-normal"><input type="checkbox" name="searchable" defaultChecked={prof?.searchable ?? true} /> Permitir que me encuentren por email o teléfono</label>
+        <button className="btn btn-gray justify-self-start">Guardar</button>
+      </form>
+    </Card>
+    </>
   ) : undefined;
   return { title: "Empresas conectadas", intro: "Tus clientes y proveedores, y qué tan bien cumplen sus envíos.", main, aside };
 }
