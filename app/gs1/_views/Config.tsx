@@ -1,5 +1,9 @@
 import Alert from "@/components/Alert";
-import { Card, Stepper, type Step } from "@/components/ui";
+import { Card, Pill, Stepper, type Step } from "@/components/ui";
+import { saveGs1arAccount, testGs1ar } from "@/app/gs1ar-actions";
+import { accountSummary } from "@/lib/gs1ar/service";
+import { ENV_LABEL } from "@/lib/gs1ar/client";
+import { when } from "@/lib/format";
 import { saveGs1Settings } from "@/app/gs1-actions";
 import { getSettings } from "@/lib/gs1/data";
 import { completeness, type Master } from "@/lib/gs1/master";
@@ -19,6 +23,8 @@ export default async function ConfigView({ sb, org, role }: ViewCtx): Promise<Vi
   const pre = s.company_prefix ? prefixInfo(s.company_prefix.padEnd(13, "0")) : null;
   const done = [!!s.company_prefix, !!s.gln, P.length > 0 && withGtin === P.length, P.length > 0 && avg >= 80, W.length > 0 && withGln === W.length, s.public_enabled];
   const first = done.indexOf(false);
+  const arAcc = await accountSummary(org.id).catch(() => null);
+  const arLog = ((await sb.from("gs1ar_log").select("created_at, action, gtin, ok, message, ms").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(8)).data as any[]) ?? [];
   const info: [string, string][] = [
     ["Prefijo de empresa GS1", "Se obtiene al asociarte a GS1 Argentina. Todos tus códigos nacen de él, así que ningún otro negocio puede repetirlos."],
     ["Información del GLN de empresa", `Identifica a tu empresa como entidad legal en el intercambio de datos (pedidos, facturas, EPCIS).`],
@@ -46,6 +52,34 @@ export default async function ConfigView({ sb, org, role }: ViewCtx): Promise<Vi
             <button className="btn btn-green justify-self-start">Guardar</button>
           </fieldset>
         </form>
+      </Card>
+      <Card title="GS1 Argentina: consulta de productos" sub="Trae los datos oficiales de cualquier GTIN: marca, contenido, empresa titular, clasificación e imágenes.">
+        <p className="mb-3 text-sm">{arAcc ? <>Conectado como <b>{arAcc.username}</b> · ambiente <b>{ENV_LABEL[arAcc.env]}</b></> : <span className="text-mute">Todavía sin configurar.</span>}</p>
+        <form className="f" action={saveGs1arAccount}>
+          <input type="hidden" name="back" value="/gs1?v=config" />
+          <fieldset disabled={!admin} className="f">
+            <div className="fgrid">
+              <label>Ambiente<select name="environment" defaultValue={arAcc?.env ?? "production"}><option value="production">Producción</option><option value="testing">Pruebas (set de datos de ejemplo)</option></select></label>
+              <label>Usuario<input name="username" defaultValue={arAcc?.username ?? ""} autoComplete="off" /></label>
+              <label>Clientid<input name="clientid" defaultValue={arAcc?.clientid ?? ""} autoComplete="off" /></label>
+              <label>Contraseña<input name="password" type="password" autoComplete="new-password" placeholder={arAcc ? "Dejar vacío para conservar la actual" : ""} /></label>
+            </div>
+            <p className="text-sm text-mute">Usuario, contraseña y clientid los entrega GS1 Argentina; cada ambiente tiene los suyos. La contraseña se guarda cifrada y nunca se vuelve a mostrar.</p>
+            <button className="btn btn-green justify-self-start">Guardar credenciales</button>
+          </fieldset>
+        </form>
+        {arAcc && admin && (
+          <form className="f mt-4 border-t border-line pt-4" action={testGs1ar}>
+            <input type="hidden" name="back" value="/gs1?v=config" />
+            <label>GTIN de prueba (opcional)<input name="sample" inputMode="numeric" placeholder="7798419930133 (existe en el ambiente de pruebas)" /></label>
+            <button className="btn btn-teal justify-self-start">Probar conexión</button>
+          </form>
+        )}
+        {arLog.length > 0 && (
+          <div className="mt-4 border-t border-line pt-4"><h3 className="mb-2">Últimas consultas</h3>
+            <ul className="grid gap-2 text-sm">{arLog.map((l, i) => <li key={i} className="flex flex-wrap items-center gap-2"><Pill tone={l.ok ? "green" : "red"}>{l.ok ? "OK" : "Error"}</Pill><span className="text-mute">{when(l.created_at)} · {l.action === "token" ? "token" : `GTIN ${l.gtin}`} · {l.ms} ms</span><span className="min-w-0 break-words">{l.message}</span></li>)}</ul>
+          </div>
+        )}
       </Card>
       <Card title="Estado de tu implementación GS1"><Stepper steps={steps} /></Card>
       <Card title="Qué no incluye (requiere membresía GS1)">

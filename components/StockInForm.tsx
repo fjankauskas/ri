@@ -9,7 +9,7 @@ const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate();
 /** Ingreso de stock: se puede escanear la etiqueta GS1 del producto (GTIN + lote + vencimiento + cantidad) y se completa solo. */
 export default function StockInForm({ products, warehouses, selected, back, closeHref }: { products: { id: string; name: string; sku: string }[]; warehouses: { id: string; name: string }[]; selected?: string; back: string; closeHref: string }) {
   const [product, setProduct] = useState(selected && products.some((p) => p.id === selected) ? selected : products[0]?.id ?? "");
-  const [lot, setLot] = useState(""), [qty, setQty] = useState(""), [expires, setExpires] = useState(""), [note, setNote] = useState(""), [info, setInfo] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  const [lot, setLot] = useState(""), [qty, setQty] = useState(""), [expires, setExpires] = useState(""), [note, setNote] = useState(""), [info, setInfo] = useState<{ tone: "ok" | "warn"; text: string; href?: string } | null>(null);
   const onCode = async (code: string) => {
     setInfo(null);
     try {
@@ -22,7 +22,7 @@ export default function StockInForm({ products, warehouses, selected, back, clos
       const e17 = val("17") ?? val("15") ?? val("16");
       if (e17) { const d = dateValue(e17, "d6"); if (d.ok) { const [y, m, dd] = d.iso!.split("-").map(Number); setExpires(`${y}-${String(m).padStart(2, "0")}-${String(dd || lastDay(y, m)).padStart(2, "0")}`); got.push("vencimiento"); } }
       const q = val("37") ?? val("30"); if (q) { setQty(q); got.push(`${q} unidades`); }
-      setInfo({ tone: r.product ? "ok" : "warn", text: `Leído: ${got.join(" · ")}` });
+      const g1 = val("01"); setInfo({ tone: r.product ? "ok" : "warn", text: `Leído: ${got.join(" · ")}`, href: !r.product && g1 ? `/gs1?v=reader&code=${g1}&ar=1` : undefined });
     } catch { setInfo({ tone: "warn", text: "No se pudo consultar el código." }); }
   };
   return (
@@ -30,6 +30,7 @@ export default function StockInForm({ products, warehouses, selected, back, clos
       <input type="hidden" name="back" value={back} />
       <ScanButton onCode={onCode} label="📷 Escanear etiqueta GS1 (completa los datos)" className="btn btn-teal justify-self-start" />
       {info && <p className={`text-sm ${info.tone === "ok" ? "in" : "out"}`} role="status">{info.text}</p>}
+      {info?.href && <Link href={info.href} className="text-sm">Buscarlo en GS1 Argentina y crear el producto →</Link>}
       <div className="fgrid">
         <label className="full">Producto<select name="product" required value={product} onChange={(e) => setProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}</select></label>
         <label>Depósito<select name="warehouse">{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>

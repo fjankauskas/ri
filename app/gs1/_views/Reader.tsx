@@ -8,13 +8,19 @@ import { prefixInfo } from "@/lib/gs1/prefix";
 import { toDigitalLink } from "@/lib/gs1/digitallink";
 import { lgtinUrn } from "@/lib/gs1/epc";
 import { n } from "@/lib/format";
+import Gs1arCard from "@/components/Gs1arCard";
+import { lookupGtin } from "@/lib/gs1ar/service";
+import { createProductFromGs1ar, fillFromGs1ar } from "@/app/gs1ar-actions";
+import { myPerms } from "@/lib/perms-server";
 import type { View, ViewCtx } from "@/lib/view";
 
 const EXAMPLES: [string, string][] = [["GTIN-13", "4006381333931"], ["GS1-128 con lote y vencimiento", "(01)09501101530003(17)271231(10)LOTE123"], ["Peso variable", "(01)95012345678903(3103)000195"], ["SSCC", "(00)106141411234567897"], ["GS1 Digital Link", "https://id.gs1.org/01/09506000134352/10/ABC1/21/12345?17=271231"]];
-export default async function ReaderView({ sb, org, P }: ViewCtx): Promise<View> {
+export default async function ReaderView({ sb, org, role, P }: ViewCtx): Promise<View> {
   const code = (P.code ?? "").trim();
   const [settings, r] = await Promise.all([getSettings(sb, org.id), code ? resolveCode(sb, org.id, code) : Promise.resolve(null)]);
   const gtin = r?.elements.find((e) => e.ai === "01" || e.ai === "02")?.value, g = gtin && validateGtin(gtin).ok ? gtin : null, lot = r?.elements.find((e) => e.ai === "10")?.value;
+  const perms = await myPerms(sb, org.id, role), arBack = g ? `/gs1?v=reader&code=${g}&ar=1` : "/gs1?v=reader";
+  const ar = g && P.ar === "1" ? await lookupGtin(org.id, g, { force: P.force === "1" }) : null;
   const dl = r?.elements.length ? toDigitalLink(r.elements.map((e) => ({ ai: e.ai, value: e.value }))) : null;
   const main = (
     <div className="grid gap-6">
@@ -38,6 +44,22 @@ export default async function ReaderView({ sb, org, P }: ViewCtx): Promise<View>
       )}
       {r?.symbology && <p className="text-sm text-mute">Simbología detectada: <b>{r.symbology}</b></p>}
       {r?.kind === "gtin" && g && <Card title="Sobre este GTIN"><p className="text-sm">{gtinKind(g)} · {prefixInfo(g)?.label ?? "prefijo sin asignar"} · GTIN-14: <span className="font-mono">{g.padStart(14, "0")}</span></p></Card>}
+      {g && (
+        <Card title="GS1 Argentina" sub="Datos oficiales de este GTIN según GS1 Argentina.">
+          {!ar && <><p className="text-sm text-mute">Consultá quién registró este producto, su marca, contenido, clasificación e imágenes.</p><Link href={`/gs1?v=reader&code=${g}&ar=1`} className="btn btn-teal mt-3 inline-block no-underline">Consultar en GS1 Argentina</Link></>}
+          {ar && !ar.ok && <><p role="alert" className="text-sm out">{ar.message}</p>{ar.code === "NO_ACCOUNT" && <Link href="/gs1?v=config" className="mt-2 inline-block text-sm">Ir a la configuración →</Link>}</>}
+          {ar && ar.ok && !ar.found && <p className="text-sm text-mute">{ar.message}</p>}
+          {ar && ar.ok && ar.found && (
+            <>
+              <Gs1arCard p={ar.product} cached={ar.cached} fetchedAt={ar.fetchedAt} refreshHref={`${arBack}&force=1`} />
+              <div className="mt-4 grid gap-3 border-t border-line pt-4">
+                {!r?.product && perms.can("inventory", "create") && <form action={createProductFromGs1ar}><input type="hidden" name="back" value={arBack} /><input type="hidden" name="gtin" value={g} /><button className="btn btn-green">Crear el producto con estos datos</button><p className="mt-1 text-xs text-mute">Toma nombre, unidad, marca, contenido, país e imagen. Después revisá el IVA y el precio.</p></form>}
+                {r?.product && perms.can("gs1", "edit") && <form action={fillFromGs1ar}><input type="hidden" name="back" value={arBack} /><input type="hidden" name="product" value={r.product.id} /><button className="btn btn-green">Completar la ficha de «{r.product.name}»</button></form>}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
       {dl?.url && <Card title="Equivalencias"><div className="grid gap-2 text-sm"><p><b>GS1 Digital Link:</b> <span className="break-all font-mono text-xs">{dl.url}</span></p>{g && settings.company_prefix && lot && <p><b>Clase de lote EPC:</b> <span className="break-all font-mono text-xs">{lgtinUrn(g.padStart(14, "0"), lot, settings.company_prefix.length)}</span></p>}</div></Card>}
     </div>
   );

@@ -3,6 +3,9 @@ import Alert from "@/components/Alert";
 import { Card, Pill, ActionLink, FilterMenu, SearchBar, Empty, type PillTone } from "@/components/ui";
 import { assignGtin, assignAllGtins, saveProductGtin, addPackLevel, deletePackLevel, saveMaster } from "@/app/gs1-actions";
 import { getSettings } from "@/lib/gs1/data";
+import Gs1arCard from "@/components/Gs1arCard";
+import { lookupGtin } from "@/lib/gs1ar/service";
+import { fillFromGs1ar, fillAllFromGs1ar } from "@/app/gs1ar-actions";
 import { gtinKind, toGtin14, validateGtin } from "@/lib/gs1/check";
 import { prefixInfo } from "@/lib/gs1/prefix";
 import { renderSymbol } from "@/lib/gs1/render";
@@ -34,6 +37,7 @@ export default async function GProductsView({ sb, org, role, P }: ViewCtx): Prom
   const g14 = cur?.p.gtin ? toGtin14(cur.p.gtin) : null, pre = cur?.p.gtin ? prefixInfo(cur.p.gtin) : null, m = cur?.m;
   const num = (k: keyof Master) => (m?.[k] ?? "") as any;
 
+  const arRes = P.ar === "1" && cur?.p.gtin ? await lookupGtin(org.id, cur.p.gtin, { force: P.force === "1" }) : null;
   const main = (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -71,6 +75,13 @@ export default async function GProductsView({ sb, org, role, P }: ViewCtx): Prom
                 <select name="mode" defaultValue={settings.company_prefix ? "gs1" : "internal"}><option value="gs1" disabled={!settings.company_prefix}>GS1 (con tu prefijo{settings.company_prefix ? "" : ": falta cargarlo"})</option><option value="internal">Interno (uso dentro de tu empresa)</option></select></label>
               <label className="flex items-center gap-2 font-normal text-mute"><input type="checkbox" name="confirm" required /> Confirmo la asignación masiva</label>
               <button className="btn btn-green">Asignar a todos</button>
+            </form>
+            <form action={fillAllFromGs1ar} className="f rounded-lg border border-line p-3">
+              {hidden}
+              <p className="text-sm font-medium">Completar fichas con GS1 Argentina</p>
+              <p className="text-xs text-mute">Consulta los productos con GTIN y ficha incompleta (hasta 25 por vez) y completa solo los datos vacíos.</p>
+              <label className="flex items-center gap-2 font-normal text-mute"><input type="checkbox" name="confirm" required /> Confirmo la consulta</label>
+              <button className="btn btn-teal">Completar fichas</button>
             </form>
             <ActionLink href="/gs1?v=labels" icon="barcode" tone="teal">Códigos y etiquetas</ActionLink>
             <a href="/api/gs1/export?format=csv" className="btn btn-gray no-underline">Descargar fichas (CSV)</a>
@@ -141,6 +152,25 @@ export default async function GProductsView({ sb, org, role, P }: ViewCtx): Prom
             </form>
             <Link href={`/inventory?v=products&id=${cur.p.id}`} className="text-sm">Editar el producto y su stock en Inventario →</Link>
           </div>
+        </Card>
+      )}
+      {cur?.p.gtin && (
+        <Card title="GS1 Argentina" sub="Datos oficiales de este GTIN.">
+          {!arRes && <><p className="text-sm text-mute">Consultá la marca, el contenido, la empresa titular y la clasificación que GS1 Argentina tiene registrados.</p><Link href={L({ ar: "1" })} className="btn btn-teal mt-3 inline-block no-underline">Consultar en GS1 Argentina</Link></>}
+          {arRes && !arRes.ok && <><p role="alert" className="text-sm out">{arRes.message}</p>{arRes.code === "NO_ACCOUNT" && <Link href="/gs1?v=config" className="mt-2 inline-block text-sm">Ir a la configuración →</Link>}</>}
+          {arRes && arRes.ok && !arRes.found && <p className="text-sm text-mute">{arRes.message}</p>}
+          {arRes && arRes.ok && arRes.found && (
+            <>
+              <Gs1arCard p={arRes.product} cached={arRes.cached} fetchedAt={arRes.fetchedAt} refreshHref={L({ ar: "1", force: "1" })} />
+              {canEdit && (
+                <form action={fillFromGs1ar} className="f mt-4 border-t border-line pt-4">
+                  {hidden}<input type="hidden" name="product" value={cur.p.id} />
+                  <label className="flex items-center gap-2 font-normal text-mute"><input type="checkbox" name="overwrite" /> Reemplazar también los datos que ya cargué</label>
+                  <button className="btn btn-green justify-self-start">Completar los datos maestros</button>
+                </form>
+              )}
+            </>
+          )}
         </Card>
       )}
     </>
