@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { validateGtin } from "@/lib/gs1/check";
 import { prefixInfo } from "@/lib/gs1/prefix";
 import { suggestedName, unitFor, type Gs1arProduct } from "@/lib/gs1ar/normalize";
+import { suggestedName as offName, parseQuantity } from "@/lib/off/normalize";
 // Campo GTIN con escáner de cámara. Celulares / Chrome en Mac y Android: detector nativo. Windows/Linux: decodificador ZXing.
 // También funciona con lectores USB (escriben el código y mandan Enter): el Enter no envía el formulario.
 export default function GtinField({ name = "gtin", initial = "" }: { name?: string; initial?: string }) {
@@ -18,8 +19,19 @@ export default function GtinField({ name = "gtin", initial = "" }: { name?: stri
     setBusy(true); setAr(null);
     try {
       const r = await (await fetch(`/api/gs1/ar?gtin=${encodeURIComponent(value.replace(/\D/g, ""))}`)).json();
-      if (!r.ok || !r.found) return setAr({ ok: false, text: r.message ?? "No se pudo consultar a GS1 Argentina." });
-      const p = r.product as Gs1arProduct, form = wrap.current?.closest("form"), done: string[] = [];
+      const form = wrap.current?.closest("form"), done: string[] = [];
+      if (!r.ok || !r.found) {   // sin GS1 Argentina (o sin ese producto): catálogo público de Open Food Facts
+        const o = await (await fetch(`/api/off/lookup?gtin=${encodeURIComponent(value.replace(/\D/g, ""))}`)).json().catch(() => null);
+        if (o?.product) {
+          const op = o.product, q = parseQuantity(op.quantity);
+          const setOff = (field: string, val: string, onlyEmpty: boolean) => { const el = form?.elements.namedItem(field) as HTMLInputElement | HTMLSelectElement | null; if (!el || !val || (onlyEmpty && el.value)) return false; el.value = val; el.dispatchEvent(new Event("input", { bubbles: true })); return el.value === val; };
+          if (setOff("name", offName(op), true)) done.push("nombre");
+          if (q && setOff("unit", q.unit, false)) done.push("unidad");
+          return setAr({ ok: true, text: `Open Food Facts: ${[op.brands, op.quantity].filter(Boolean).join(" · ")}${done.length ? ` — se completó: ${done.join(" y ")}.` : "."}` });
+        }
+        return setAr({ ok: false, text: `${r.message ?? "No se pudo consultar a GS1 Argentina."}${o?.status === "not_found" ? " Tampoco figura en Open Food Facts." : ""}` });
+      }
+      const p = r.product as Gs1arProduct;
       const setField = (field: string, val: string, onlyEmpty: boolean) => { const el = form?.elements.namedItem(field) as HTMLInputElement | HTMLSelectElement | null; if (!el || !val || (onlyEmpty && el.value)) return false; el.value = val; el.dispatchEvent(new Event("input", { bubbles: true })); return el.value === val; };
       if (setField("name", suggestedName(p), true)) done.push("nombre");
       if (setField("unit", unitFor(p), false)) done.push("unidad");
@@ -63,7 +75,7 @@ export default function GtinField({ name = "gtin", initial = "" }: { name?: stri
         <button type="button" onClick={() => { setMsg("Apuntá la cámara al código de barras"); setOpen(true); }}>📷 Escanear</button>
       </div>
       {v && <p className={`text-sm ${v.ok ? "in" : "out"}`} role="status">{v.ok ? `✔ ${v.kind} válido${pre ? ` · ${pre.label}` : ""}` : `✖ ${v.error}`}</p>}
-      {v?.ok && <button type="button" onClick={fromGs1} disabled={busy} className="justify-self-start">{busy ? "Consultando…" : "🔎 Completar con datos de GS1 Argentina"}</button>}
+      {v?.ok && <button type="button" onClick={fromGs1} disabled={busy} className="justify-self-start">{busy ? "Consultando…" : "🔎 Completar con datos del catálogo (GS1 / Open Food Facts)"}</button>}
       {ar && <p className={`text-sm ${ar.ok ? "in" : "out"}`} role="status">{ar.text}</p>}
       {open && (
         <div className="ov" role="dialog" aria-modal="true" aria-label="Escanear código de barras">

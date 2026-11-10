@@ -1,0 +1,26 @@
+# Copiar a <raíz del repositorio>/.github/workflows/off-sync.yml
+# Sincroniza todos los días el catálogo de Open Food Facts. Secretos necesarios (Settings → Secrets → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OFF_CONTACT_EMAIL  (y opcional OFF_ALERT_WEBHOOK_URL)
+# Si la app está en la raíz del repositorio (no en una carpeta «ri»), borrá las líneas «working-directory».
+name: Sincronizar Open Food Facts
+on:
+  schedule:
+    - cron: "30 6 * * *"      # todos los días 06:30 UTC (03:30 en Argentina)
+  workflow_dispatch: {}
+concurrency: { group: off-sync, cancel-in-progress: false }
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: ri } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npx --yes tsx scripts/off-sync.ts auto
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OFF_CONTACT_EMAIL: ${{ secrets.OFF_CONTACT_EMAIL }}
+          OFF_ALERT_WEBHOOK_URL: ${{ secrets.OFF_ALERT_WEBHOOK_URL }}

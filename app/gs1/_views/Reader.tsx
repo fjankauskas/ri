@@ -11,6 +11,10 @@ import { n } from "@/lib/format";
 import Gs1arCard from "@/components/Gs1arCard";
 import { lookupGtin } from "@/lib/gs1ar/service";
 import { createProductFromGs1ar, fillFromGs1ar } from "@/app/gs1ar-actions";
+import OffCard from "@/components/OffCard";
+import { lookupOff } from "@/lib/off/service";
+import { offStatusText } from "@/lib/off/messages";
+import { createProductFromOff } from "@/app/off-actions";
 import { myPerms } from "@/lib/perms-server";
 import type { View, ViewCtx } from "@/lib/view";
 
@@ -21,6 +25,7 @@ export default async function ReaderView({ sb, org, role, P }: ViewCtx): Promise
   const gtin = r?.elements.find((e) => e.ai === "01" || e.ai === "02")?.value, g = gtin && validateGtin(gtin).ok ? gtin : null, lot = r?.elements.find((e) => e.ai === "10")?.value;
   const perms = await myPerms(sb, org.id, role), arBack = g ? `/gs1?v=reader&code=${g}&ar=1` : "/gs1?v=reader";
   const ar = g && P.ar === "1" ? await lookupGtin(org.id, g, { force: P.force === "1" }) : null;
+  const off = g && !r?.product ? await lookupOff(g) : null;   // flujo del escáner: catálogo local → Open Food Facts
   const dl = r?.elements.length ? toDigitalLink(r.elements.map((e) => ({ ai: e.ai, value: e.value }))) : null;
   const main = (
     <div className="grid gap-6">
@@ -44,6 +49,16 @@ export default async function ReaderView({ sb, org, role, P }: ViewCtx): Promise
       )}
       {r?.symbology && <p className="text-sm text-mute">Simbología detectada: <b>{r.symbology}</b></p>}
       {r?.kind === "gtin" && g && <Card title="Sobre este GTIN"><p className="text-sm">{gtinKind(g)} · {prefixInfo(g)?.label ?? "prefijo sin asignar"} · GTIN-14: <span className="font-mono">{g.padStart(14, "0")}</span></p></Card>}
+      {off && (
+        <Card title="Catálogo público (Open Food Facts)" sub="Este código no es de ningún producto de tu empresa.">
+          {off.status === "local" || off.status === "found" ? (
+            <>
+              <OffCard p={off.product} fromCatalog={off.status === "local"} />
+              {perms.can("inventory", "create") && <form action={createProductFromOff} className="mt-4 border-t border-line pt-4"><input type="hidden" name="back" value={arBack} /><input type="hidden" name="gtin" value={g!} /><button className="btn btn-green">Crear el producto con estos datos</button><p className="mt-1 text-xs text-mute">Toma nombre, marca y cantidad, y deja anotado que vienen de Open Food Facts.</p></form>}
+            </>
+          ) : <p className={`text-sm ${off.status === "not_found" ? "text-mute" : "out"}`} role="status">{offStatusText(off)}</p>}
+        </Card>
+      )}
       {g && (
         <Card title="GS1 Argentina" sub="Datos oficiales de este GTIN según GS1 Argentina.">
           {!ar && <><p className="text-sm text-mute">Consultá quién registró este producto, su marca, contenido, clasificación e imágenes.</p><Link href={`/gs1?v=reader&code=${g}&ar=1`} className="btn btn-teal mt-3 inline-block no-underline">Consultar en GS1 Argentina</Link></>}
